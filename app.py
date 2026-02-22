@@ -52,46 +52,47 @@ def predict():
 @app.route("/predict_multiple", methods=["POST"])
 def predict_multiple():
     try:
+        # 1. Flexible data handling (accepts raw list from Node.js or a dictionary)
         data = request.json
-        bins = data["bins"]
+        bins = data if isinstance(data, list) else data.get("bins", [])
 
         X = []
         ids = []
 
         for b in bins:
+            # Encode location safely
             location = encoder.transform([b["location_type"].capitalize()])[0]
 
             fill_percent = b["fill_percent"]
             hour = b["hour"]
 
-            # 🔥 NEW FEATURES
-            fill_rate = fill_percent / 10   # approx (since hours_to_full नाहीये)
-            is_peak_hour = 1 if hour in [8,9,18,19] else 0
-
+            # Append exactly the 4 features your model expects
             X.append([
                 fill_percent,
                 location,
                 b["is_weekend"],
-                hour,
-                
+                hour
             ])
 
             ids.append(b["bin_id"])
 
         X = np.array(X)
 
-        # 🔥 Probability based prediction
-        proba = model.predict_proba(X)[:,1]
-        preds = proba > 0.7
+        # 🔥 Probability based prediction using the THRESHOLD
+        proba = model.predict_proba(X)[:, 1]
+        preds = proba > THRESHOLD
 
+        # 2. Return 'optimized_ids' exactly as Node.js expects
         return jsonify({
+            "success": True,
             "total_bins": len(bins),
             "need_collection": int(sum(preds)),
-            "bin_ids": [ids[i] for i in range(len(ids)) if preds[i]]
+            "optimized_ids": [ids[i] for i in range(len(ids)) if preds[i]]
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)})
+        # Returning a proper error dictionary so it's easier to debug
+        return jsonify({"success": False, "error": str(e)}), 400
     
 if __name__ == "__main__":
-   app.run(debug=True)
+    app.run(debug=True)
